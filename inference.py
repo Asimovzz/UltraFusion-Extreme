@@ -26,7 +26,7 @@ def pad_imgv3(x, crop_size, crop_step):
     mod_pad_w = w_target - w
     x_np = x.cpu().numpy()
     x_np = np.pad(x_np, pad_width=((0,0),(0,0),(0,mod_pad_h),(0,mod_pad_w)), mode='reflect')
-    res = torch.from_numpy(x_np).cuda()
+    res = torch.from_numpy(x_np).to(x.device)
     return res
 
 
@@ -64,7 +64,7 @@ def combine_parallel_wo_artifact(sr_list, num_h, num_w, new_h, new_w, patch_size
 
     pred_full_w_list = [] # rectangle
     for i in range(num_h):
-        pred_full_w = torch.zeros([1, 3, p_size, new_w]).cuda()
+        pred_full_w = torch.zeros([1, 3, p_size, new_w], device=sr_list[0].device)
         pred_full_w[:, :, :, 0 : step] = pred_lr_list[i * num_w][:, :, 0 : step]
         # pred_full_w[:, :, :, 0 : patch_size] = pred_lr_list[i * num_w][:, :, 0 : patch_size]
         pred_full_w[:, :, :, new_w - step :] = pred_lr_list[i * num_w + num_w - 1][:, :, -step:]
@@ -95,6 +95,31 @@ def combine_parallel_wo_artifact(sr_list, num_h, num_w, new_h, new_w, patch_size
     return pred, pred_full_w_list
 
 
+def summarize_alignment(occ_mask, oe, saturation_threshold=0.98):
+    occ_ratio = float(occ_mask.mean().detach().cpu())
+    saturated = (oe >= saturation_threshold).float()
+    saturation_ratio = float(saturated.mean().detach().cpu())
+    return {
+        'occ_ratio': occ_ratio,
+        'saturation_ratio': saturation_ratio,
+    }
+
+
+def resolve_alignment_strategy(args, occ_mask, oe):
+    strategy = args.strategy
+    stats = summarize_alignment(occ_mask, oe, args.saturation_threshold)
+    if strategy != 'auto':
+        return strategy == 'align', stats
+
+    unreliable_mask = (
+        stats['occ_ratio'] < args.auto_min_occ_ratio or
+        stats['occ_ratio'] > args.auto_max_occ_ratio
+    )
+    saturation_heavy = stats['saturation_ratio'] > args.auto_saturation_ratio
+    use_align = not (unreliable_mask and saturation_heavy)
+    return use_align, stats
+
+
 def mef(img1, img2, img_name, flow_model, pipe, args, consistent_start=None):
     _, _, H, W = img2.shape
     img1 = pad_img(img1, 16)
@@ -107,6 +132,7 @@ def mef(img1, img2, img_name, flow_model, pipe, args, consistent_start=None):
     img12 = backward_warp(img1, img21_flow)
     _, occ_mask = forward_backward_consistency_check(img12_flow, img21_flow)
     occ_mask = occ_mask.unsqueeze(dim=1)
+    use_align, align_stats = resolve_alignment_strategy(args, occ_mask, img2)
     img12_mask = img12 * (1. - occ_mask)
 
     img1 = img1[:, :, :H, :W]
@@ -115,7 +141,7 @@ def mef(img1, img2, img_name, flow_model, pipe, args, consistent_start=None):
     img12_mask = img12_mask[:, :, :H, :W]
     occ_mask = occ_mask[:, :, :H, :W]
 
-    if not args.prealign:
+    if not use_align:
         img12_mask = img1 # cancel pre-align
 
 
@@ -124,7 +150,7 @@ def mef(img1, img2, img_name, flow_model, pipe, args, consistent_start=None):
 
     img1_mscn_norm, img1_color = get_color_and_struct(isrgb=True, input_img=img12_mask, ksize=7, sigmaX=0, c=0.0000001) 
     img1_mscn_norm, img1_color = img1_mscn_norm.unsqueeze(dim=0), img1_color.unsqueeze(dim=0)
-    img1_mscn_norm, img1_color = img1_mscn_norm.cuda(), img1_color.cuda()
+    img1_mscn_norm, img1_color = img1_mscn_norm.to(args.device), img1_color.to(args.device)
     fidelity_input = torch.cat([img2, img1_mscn_norm, img1_color], dim=1)
 
     img2_patches, num_h, num_w, new_h, new_w = crop_parallel(img2, args.tile_size, args.tile_stride)
@@ -138,7 +164,7 @@ def mef(img1, img2, img_name, flow_model, pipe, args, consistent_start=None):
     out_list = []
     for ind, (img2_, img1_struct_, img1_color_, fidelity_input_) in enumerate(zip(img2_patches_list, img1_struct_patches_list, img1_color_patches_list, fidelity_input_patches_list)):
         set_seed(args.seed)
-        out = pipe.run(lq2=img2_, lq1_mscn_norm=img1_struct_, lq1_color=img1_color_, tiled=args.tiled, tile_size=args.tile_size, tile_stride=args.tile_stride, cond_fn=cond_fn, fidelity_input=fidelity_input_, consistent_start=consistent_start) # [-1, 1]
+        out = pipe.run(lq2=img2_, lq1_mscn_norm=img1_struct_, lq1_color=img1_color_, steps=args.steps, tiled=args.tiled, tile_size=args.tile_size, tile_stride=args.tile_stride, cond_fn=cond_fn, fidelity_input=fidelity_input_, consistent_start=consistent_start) # [-1, 1]
         out_list.append(out)
     
     out_list = torch.cat(out_list, dim=0)
@@ -149,7 +175,7 @@ def mef(img1, img2, img_name, flow_model, pipe, args, consistent_start=None):
     img1_light = img1_light[:, :, :H, :W]
     img12 = img12[:, :, :H, :W]
     img2 = img2[:, :, :H, :W]
-    occ_mask = occ_mask[:, :H, :W]
+    occ_mask = occ_mask[:, :, :H, :W]
     img12_mask = img12_mask[:, :, :H, :W]
     img1_mscn_norm = img1_mscn_norm[:, :, :H, :W] 
     img1_color = img1_color[:, :, :H, :W]
@@ -159,15 +185,24 @@ def mef(img1, img2, img_name, flow_model, pipe, args, consistent_start=None):
     u[:, 1:, :, :] = img1_color
     v[:, :2, :, :] = img1_color
 
-    save_image((out + 1) / 2, '{}/{}_out_{}.png'.format(args.output, img_name, 'align' if args.prealign else 'noalign'))
+    align_tag = 'align' if use_align else 'noalign'
+    if args.strategy == 'auto':
+        align_tag = 'auto_' + align_tag
+    print(
+        f'{img_name}: strategy={args.strategy}, selected={align_tag}, '
+        f'occ_ratio={align_stats["occ_ratio"]:.4f}, '
+        f'saturation_ratio={align_stats["saturation_ratio"]:.4f}'
+    )
+
+    save_image((out + 1) / 2, '{}/{}_out_{}.png'.format(args.output, img_name, align_tag))
     if args.save_all:
         save_image(img1, '{}/{}_ue.png'.format(args.output, img_name))
         save_image(img1_light, '{}/{}_ue_imf.png'.format(args.output, img_name))
-        save_image(img12_mask, '{}/{}_ue2oe_mask_{}.png'.format(args.output, img_name, 'align' if args.prealign else 'noalign'))
-        save_image(img12, '{}/{}_ue2oe_{}.png'.format(args.output, img_name, 'align' if args.prealign else 'noalign'))
-        save_image(img1_mscn_norm, '{}/{}_ue2oe_mask_mscn_{}.png'.format(args.output, img_name, 'align' if args.prealign else 'noalign'))
+        save_image(img12_mask, '{}/{}_ue2oe_mask_{}.png'.format(args.output, img_name, align_tag))
+        save_image(img12, '{}/{}_ue2oe_{}.png'.format(args.output, img_name, align_tag))
+        save_image(img1_mscn_norm, '{}/{}_ue2oe_mask_mscn_{}.png'.format(args.output, img_name, align_tag))
         save_image(img2, '{}/{}_oe.png'.format(args.output, img_name))
-        save_image(occ_mask, '{}/{}_occmask_{}.png'.format(args.output, img_name, 'align' if args.prealign else 'noalign'))
+        save_image(occ_mask, '{}/{}_occmask_{}.png'.format(args.output, img_name, align_tag))
         save_image(u, '{}/{}_u.png'.format(args.output, img_name))
         save_image(v, '{}/{}_v.png'.format(args.output, img_name))
 
@@ -175,15 +210,26 @@ def mef(img1, img2, img_name, flow_model, pipe, args, consistent_start=None):
 
 parser = ArgumentParser()
 parser.add_argument("--dataset", type=str, default='MEFB')
+parser.add_argument("--input_dir", default=None, type=str, help="Optional dataset root with scene folders containing ue.* and oe.*.")
 parser.add_argument("--output", default='results', type=str)
 parser.add_argument("--tiled", action='store_true', default=False)
 parser.add_argument("--tile_size", type=int, default=512)
 parser.add_argument("--tile_stride", type=int, default=256)
+parser.add_argument("--steps", type=int, default=50)
+parser.add_argument("--limit", type=int, default=None, help="Optional maximum number of scenes to run.")
+parser.add_argument("--max_long_edge", type=int, default=None, help="Resize inputs so the long edge is at most this value before inference.")
 parser.add_argument("--device", type=str, default="cuda", choices=["cpu", "cuda", "mps"])
-parser.add_argument("--seed", type=int, default=231, choices=["cpu", "cuda", "mps"])
-parser.add_argument("--prealign", action='store_true', default=False)
+parser.add_argument("--seed", type=int, default=231)
+parser.add_argument("--prealign", action='store_true', default=False, help="Legacy flag. Equivalent to --strategy align when --strategy is not set.")
+parser.add_argument("--strategy", type=str, default=None, choices=["align", "noalign", "auto"], help="Alignment policy used before guided inpainting.")
+parser.add_argument("--auto_min_occ_ratio", type=float, default=0.002)
+parser.add_argument("--auto_max_occ_ratio", type=float, default=0.35)
+parser.add_argument("--auto_saturation_ratio", type=float, default=0.20)
+parser.add_argument("--saturation_threshold", type=float, default=0.98)
 parser.add_argument("--save_all", action='store_true', default=False)
 args = parser.parse_args()
+if args.strategy is None:
+    args.strategy = 'align' if args.prealign else 'noalign'
 
 from model.V4_CA.cldm import ControlLDM
 from model.V4_CA.gaussian_diffusion import Diffusion
@@ -202,14 +248,14 @@ cldm.eval().to(args.device)
 fidelity_encoder = instantiate_from_config(OmegaConf.load("configs/fcb.yaml").model.fidelity_encoder)
 fidelity_encoder_sd = torch.load('ckpts/fcb.pt')
 fidelity_encoder.load_state_dict(fidelity_encoder_sd, strict=True)
-fidelity_encoder = fidelity_encoder.cuda()
+fidelity_encoder = fidelity_encoder.to(args.device)
 fidelity_encoder.eval()
 ### load diffusion
 diffusion: Diffusion = instantiate_from_config(OmegaConf.load("configs/ultrafusion.yaml").model.diffusion)
 diffusion.to(args.device)
 ### load flow model
 flow_state_dict = torch.load('ckpts/raft-sintel.pth', map_location='cpu')
-flow_model = RAFT(args).cuda()
+flow_model = RAFT(args).to(args.device)
 new_flow_state_dict = OrderedDict()
 for k, v in flow_state_dict.items():
     new_flow_state_dict[k.replace("module.", "")] = v
@@ -221,7 +267,7 @@ pipe = UltraFusionPipeline(cldm=cldm, diffusion=diffusion, fidelity_encoder=fide
 
 to_tensor = ToTensor()
 
-dataset = TestDataset(args.dataset)
+dataset = TestDataset(args.dataset, input_dir=args.input_dir, max_long_edge=args.max_long_edge)
 dataloader = DataLoader(
     dataset,
     shuffle=False,
@@ -230,14 +276,18 @@ dataloader = DataLoader(
 )
 
 if not os.path.exists(args.output):
-    os.mkdir(args.output)
+    os.makedirs(args.output, exist_ok=True)
 args.output = os.path.join(args.output, args.dataset)
 if not os.path.exists(args.output):
-    os.mkdir(args.output)
+    os.makedirs(args.output, exist_ok=True)
 
-for batch in dataloader:
-    ue = batch['ue'].cuda()
-    oe = batch['oe'].cuda()
+for index, batch in enumerate(dataloader):
+    if args.limit is not None and index >= args.limit:
+        break
+    ue = batch['ue'].to(args.device)
+    oe = batch['oe'].to(args.device)
     img_name = batch['file_name'][0]
 
     _ = mef(img1=ue, img2=oe, img_name=img_name, flow_model=flow_model, pipe=pipe, args=args, consistent_start=None)
+    if args.device == "cuda":
+        torch.cuda.empty_cache()

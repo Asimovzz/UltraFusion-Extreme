@@ -20,8 +20,7 @@ def backward_warp(x, flo):
     yy = yy.view(1, 1, H, W).repeat(B, 1, 1, 1)
     grid = torch.cat((xx, yy), 1).float()
     
-    if x.is_cuda:
-        grid = grid.cuda()
+    grid = grid.to(x.device)
     vgrid = grid + flo
     # scale grid to [-1,1]
     vgrid[:, 0, :, :] = 2.0 * vgrid[:, 0, :, :].clone() / max(W - 1, 1) - 1.0
@@ -64,7 +63,7 @@ def forward_backward_consistency_check(fwd_flow, bwd_flow,
 
 
 def calculate_imf_map(x, y):
-    imf_map = torch.zeros(256).cuda()
+    imf_map = torch.zeros(256, device=x.device)
     r = 0
     for i in range(256):
         if x[i] == 0:
@@ -99,7 +98,7 @@ def IMF(ue, oe):
     ]
     imf_map = torch.concat(imf_map, dim=0)
 
-    zeros = torch.zeros([C, 1], dtype=torch.float32).cuda()
+    zeros = torch.zeros([C, 1], dtype=torch.float32, device=ue.device)
     imf_map = torch.concat((imf_map, zeros), 1)
 
     ue_imf = rearrange(ue.squeeze(), 'c h w -> c (h w)')

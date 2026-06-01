@@ -75,7 +75,9 @@ class UltraFusionPipeline:
         consistent_start: torch.Tensor = None
     ) -> torch.Tensor:
         ### preprocess
-        lq1_mscn_norm, lq1_color, lq2 = lq1_mscn_norm.cuda(), lq1_color.cuda(), lq2.cuda()
+        lq1_mscn_norm = lq1_mscn_norm.to(self.device)
+        lq1_color = lq1_color.to(self.device)
+        lq2 = lq2.to(self.device)
         bs, _, H, W = lq2.shape
         if not tiled:
             assert H == 512 and W == 512, "The image shape must be equal to 512x512"

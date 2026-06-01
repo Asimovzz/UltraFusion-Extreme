@@ -1,9 +1,9 @@
-import os, random, glob, time
+import os, glob
 import cv2
 import torch
 import numpy as np
 import torch.utils.data as data
-from PIL import Image
+from PIL import Image, ImageOps
 from torchvision.transforms import ToTensor
 
 
@@ -37,25 +37,41 @@ def get_color_and_struct(isrgb, input_img: torch.Tensor, ksize, sigmaX, c):  #in
 
 
 class TestDataset(data.Dataset):
-    def __init__(self, dataset):
+    IMG_DIRS = {
+        'UltraFusion': './data/UltraFusionBenchmark',
+        'MEFB': './data/MEFB',
+        'RealHDRV': './data/Real-HDRV-Deghosting-sRGB-Testing',
+        'UltraFusionExtreme': './data/UltraFusion-Extreme-Cases',
+        'UltraFusion-Extreme-Cases': './data/UltraFusion-Extreme-Cases',
+    }
+
+    def __init__(self, dataset, input_dir=None, max_long_edge=None):
         super(TestDataset, self).__init__()
         self.dataset = dataset
-        self.img_dir_dict = {
-            'UltraFusion': './data/UltraFusionBenchmark',
-            'MEFB': './data/MEFB',
-            'RealHDRV': './data/Real-HDRV-Deghosting-sRGB-Testing',
-        }
+        self.img_dir = input_dir or self.IMG_DIRS.get(dataset)
+        if self.img_dir is None:
+            supported = ', '.join(sorted(self.IMG_DIRS.keys()))
+            raise ValueError(f'Unknown dataset "{dataset}". Supported datasets: {supported}.')
+        if not os.path.isdir(self.img_dir):
+            raise FileNotFoundError(f'Dataset directory not found: {self.img_dir}')
+
         self.ldr_list1 = []
         self.ldr_list2 = []
         self.file_name_list = []
         self.to_tensor = ToTensor()
+        self.max_long_edge = max_long_edge
 
-        self.scene_list = os.listdir(self.img_dir_dict[dataset])
+        self.scene_list = os.listdir(self.img_dir)
         self.scene_list.sort()
         for scene in self.scene_list:
-            if len(os.listdir(os.path.join(self.img_dir_dict[dataset], scene))) > 0:
-                self.ldr_list1.append(glob.glob(os.path.join(self.img_dir_dict[dataset], scene, '*ue.*'))[0])
-                self.ldr_list2.append(glob.glob(os.path.join(self.img_dir_dict[dataset], scene, '*oe.*'))[0])
+            scene_dir = os.path.join(self.img_dir, scene)
+            if os.path.isdir(scene_dir) and len(os.listdir(scene_dir)) > 0:
+                ue_paths = glob.glob(os.path.join(scene_dir, '*ue.*'))
+                oe_paths = glob.glob(os.path.join(scene_dir, '*oe.*'))
+                if not ue_paths or not oe_paths:
+                    continue
+                self.ldr_list1.append(ue_paths[0])
+                self.ldr_list2.append(oe_paths[0])
                 self.file_name_list.append('{}_{}'.format(dataset, scene))
         
 
@@ -64,10 +80,23 @@ class TestDataset(data.Dataset):
         ldr2_path = self.ldr_list2[index]
         file_name = self.file_name_list[index]
 
-        ldr1 = Image.open(ldr1_path).convert('RGB')
-        ldr2 = Image.open(ldr2_path).convert('RGB')
+        ldr1 = ImageOps.exif_transpose(Image.open(ldr1_path)).convert('RGB')
+        ldr2 = ImageOps.exif_transpose(Image.open(ldr2_path)).convert('RGB')
+
+        if ldr1.size != ldr2.size:
+            if ldr1.size == (ldr2.size[1], ldr2.size[0]):
+                ldr2 = ldr2.transpose(Image.Transpose.ROTATE_90)
+            if ldr1.size != ldr2.size:
+                ldr2 = ldr2.resize(ldr1.size, Image.Resampling.BICUBIC)
 
         W, H = ldr1.size
+
+        if self.max_long_edge is not None and max(W, H) > self.max_long_edge:
+            scale = self.max_long_edge / max(W, H)
+            new_size = [max(1, int(W * scale)), max(1, int(H * scale))]
+            ldr1 = ldr1.resize(new_size, Image.Resampling.BICUBIC)
+            ldr2 = ldr2.resize(new_size, Image.Resampling.BICUBIC)
+            W, H = ldr1.size
 
         if W * H >= 6000 * 4000:
             ldr1 = ldr1.resize([W // 4, H // 4])

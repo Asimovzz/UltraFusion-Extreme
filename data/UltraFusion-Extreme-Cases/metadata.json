@@ -1,0 +1,58 @@
+{
+  "name": "UltraFusion-Extreme-Cases",
+  "version": "0.1",
+  "description": "A small real-shot stress-test set for UltraFusion inference under extreme exposure gaps, handheld motion, saturation-heavy regions, and pre-alignment failures.",
+  "format": "Each scene folder contains ue.* for the under-exposed input and oe.* for the over-exposed input.",
+  "scenes": [
+    {
+      "id": "0001",
+      "ue": "0001/ue.png",
+      "oe": "0001/oe.png",
+      "tags": ["extreme_exposure", "handheld"],
+      "notes": "Use as a basic real-shot stress case."
+    },
+    {
+      "id": "0002",
+      "ue": "0002/ue.jpg",
+      "oe": "0002/oe.jpg",
+      "tags": ["extreme_exposure", "handheld"],
+      "notes": "Use for align/noalign comparison."
+    },
+    {
+      "id": "0003",
+      "ue": "0003/ue.jpg",
+      "oe": "0003/oe.jpg",
+      "tags": ["extreme_exposure", "handheld"],
+      "notes": "Use for align/noalign comparison."
+    },
+    {
+      "id": "0004",
+      "ue": "0004/ue.png",
+      "oe": "0004/oe.png",
+      "tags": ["extreme_exposure", "portrait_orientation"],
+      "notes": "Tall input pair."
+    },
+    {
+      "id": "0005",
+      "ue": "0005/ue.png",
+      "oe": "0005/oe.png",
+      "tags": ["extreme_exposure", "larger_resolution"],
+      "notes": "Larger image pair for tiled inference."
+    },
+    {
+      "id": "0006",
+      "ue": "0006/ue.png",
+      "oe": "0006/oe.png",
+      "tags": ["extreme_exposure", "portrait_orientation"],
+      "notes": "Tall input pair."
+    },
+    {
+      "id": "0007",
+      "ue": "0007/ue.png",
+      "oe": "0007/oe.png",
+      "tags": ["extreme_exposure", "orientation_mismatch"],
+      "notes": "The input dimensions are transposed. The dataset loader applies EXIF transpose and rotates the over-exposed image when the pair dimensions are swapped."
+    }
+  ]
+}
+

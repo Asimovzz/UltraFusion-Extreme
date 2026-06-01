@@ -1,112 +1,205 @@
-<p align="center">
+# UltraFusion-Extreme
 
-  <h2 align="center">
-  UltraFusion: Ultra High Dynamic Imaging using Exposure Fusion
+This repository is a reproduction and inference-time extension of the official UltraFusion project:
 
-  (CVPR 2025 Highlight)
-  </h2>
-  <p align="center">
-    <a href="https://scholar.google.com.hk/citations?user=pwixOhcAAAAJ&hl=zh-CN"><strong>Zixuan Chen</strong></a><sup>1,3</sup>
-    ·
-    <a><strong>Yujin Wang</strong></a><sup>1</sup>
-    ·
-    <a href="https://caixin98.github.io/"><strong>Xin Cai</strong></a><sup>2</sup>
-    ·
-    <a href="https://zhiyuanyou.github.io/"><strong>Zhiyuan You</strong></a><sup>2</sup>
-    <br>
-    <a href="https://person.zju.edu.cn/lzmhome"><strong>Zheming Lu</strong></a><sup>3</sup>
-    ·
-    <a><strong>Fan Zhang</strong></a><sup>1</sup>
-    ·
-    <a href="https://guoshi28.github.io/"><strong>Shi Guo</strong></a><sup>1</sup>
-    ·
-    <a href="https://tianfan.info/"><strong>Tianfan Xue</strong></a><sup>2,1</sup>
-    <!-- <br> -->
-    <br>
-    <sup>1</sup>Shanghai AI Laboratory, <sup>2</sup>The Chinese University of Hong Kong, 
-    <sup>3</sup>Zhejiang University  
-    <br>
-    <div align="center">
-    <a href="https://arxiv.org/abs/2501.11515"><img src='https://img.shields.io/badge/arXiv-UltraFusion-red' alt='Paper PDF'></a>
-    <a href='https://openimaginglab.github.io/UltraFusion/'><img src='https://img.shields.io/badge/Project_Page-UltraFusion-blue' alt='Project Page'></a>
-    <a href='https://huggingface.co/spaces/iimmortall/UltraFusion'><img src='https://img.shields.io/badge/%F0%9F%A4%97%20Hugging%20Face-Spaces-yellow'></a>
-    </div>
-  </p>
-</p>
-  
-![teaser_img](assets/teaser.png)
+- Official code: [OpenImagingLab/UltraFusion](https://github.com/OpenImagingLab/UltraFusion)
+- Paper: [UltraFusion: Ultra High Dynamic Imaging using Exposure Fusion](https://arxiv.org/abs/2501.11515), CVPR 2025 Highlight
+- Official project page: [openimaginglab.github.io/UltraFusion](https://openimaginglab.github.io/UltraFusion/)
 
-## :mega: News
-- **2026.3.5**: [UltraFusion+ benchmark](https://drive.google.com/drive/folders/1Na66yFmw0mrSr4gl5yRQJAew6hKQbWjH?usp=sharing) and [UltraFusion+ training dataset](https://drive.google.com/drive/folders/1F4q3Bs4-Sj3ZO7dTYFCPQ2cRUWe13Dr-?usp=sharing) is realeased.
-- **2024.4.23**: Inference codes, benchmark and results are released.
-- **2024.4.5**: Our UltraFusion is selected to be presented as a :sparkles:***highlight***:sparkles: in CVPR 2025.
-- **2025.2.27**: Accepeted by ***CVPR 2025*** :tada::tada::tada:.
-- **2025.1.21**: Feel free to try online demos at <a href="https://huggingface.co/spaces/iimmortall/UltraFusion">Hugging Face</a> and <a href="https://openxlab.org.cn/apps/detail/OpenImagingLab/UltraFusion">OpenXLab</a> :blush:.
-- **2025.9.30**: Training code is released (sorry for my delay :disappointed:).
+This is not an official UltraFusion release. The original model architecture, training code, and pretrained weights belong to the UltraFusion authors. This repository focuses on a small reproduction-oriented extension: real-shot extreme exposure cases, inference-time alignment analysis, and practical scripts for inspecting failure modes.
 
-## :memo: ToDo List
-- [x] Release training codes.
-- [x] Release inference codes and pre-trained model. 
-- [x] Release UltraFusion benchmark and visual results.
-- [x] Release more visual comparison in our [project page](https://openimaginglab.github.io/UltraFusion/)
+## What This Project Adds
 
-## :bridge_at_night: UltraFusion Benchmark (UltraFusion100)
-We capture 100 challenging real-world HDR scenes for performance evaluation. 
-Our benchmark (UltraFusion100) and results (include competing methods) are availble at [Google Drive](https://drive.google.com/drive/folders/18icr4A_0qGvwqehPhxH29hqJYO8HS6bi?usp=sharing) and [Baidu Disk]().
-Moreover, we also provide results of our method and the comparison methods on [RealHDV](https://github.com/yungsyu99/Real-HDRV) and [MEFB](https://github.com/xingchenzhang/MEFB).
+Compared with the upstream UltraFusion repository, the current work adds:
 
-> *<sub>Note: The HDR reconstruction methods perform poorly in some scenes because we follow their setup to retrain 2-exposure version, while the training set they used only provide ground truth for the middle exposure, limiting the dynamic range. We believe that using training data with higher dynamic range can improve performance.</sub>*
+- `data/UltraFusion-Extreme-Cases`: 7 real-shot under/over-exposed image pairs captured as stress cases.
+- `--strategy {align,noalign,auto}` in `inference.py`: explicit control over pre-alignment behavior.
+- `--steps`, `--limit`, and `--max_long_edge`: practical inference controls for limited GPU memory.
+- `scripts/diagnose_alignment.py`: RAFT pre-alignment diagnosis without running the full diffusion model.
+- `scripts/multi_exposure_fuse.py`: brightness ordering and pair planning for multi-exposure experiments.
+- `scripts/build_report.py`: static HTML gallery generation from saved outputs.
+- `scripts/make_contact_sheet.py`: compact contact-sheet generation for README/project-page previews.
+- `docs/benchmark.md`: benchmark notes and preview baseline settings.
+- `docs/method.md`: notes on the observed alignment and multi-exposure failure modes.
 
-## Quick Start
-**Installation**
+The goal is not to claim a new SOTA model. The goal is to make the reproduction more useful as an open-source project by documenting where UltraFusion works, where it struggles, and how to inspect those cases.
+
+## Preview Baseline
+
+The image below shows a lightweight preview baseline on all 7 `UltraFusion-Extreme-Cases` scenes.
+
+![UltraFusion-Extreme preview baseline](assets/extreme_baseline/preview_contact_sheet.jpg)
+
+This preview was generated on an 8GB RTX 4060 Laptop GPU with a reduced setting:
+
 ```shell
-# clone this repo
-git clone https://github.com/OpenImagingLab/UltraFusion.git
-cd UltraFusion
+python inference.py --dataset UltraFusionExtreme --output results_baseline_preview --tiled --tile_size 512 --tile_stride 256 --strategy auto --steps 10 --max_long_edge 512 --save_all
+python scripts/build_report.py --input results_baseline_preview/UltraFusionExtreme --output reports/baseline_preview.html --title "UltraFusion-Extreme Preview Baseline"
+python scripts/make_contact_sheet.py --input results_baseline_preview/UltraFusionExtreme --output assets/extreme_baseline/preview_contact_sheet.jpg --prefix UltraFusionExtreme --count 7
+```
 
-# create environment
+This is intentionally a preview baseline, not a full-quality benchmark. It uses only 10 diffusion steps and resizes each input to a 512 px long edge, so some visual results are weaker than default full-resolution UltraFusion inference. See [docs/benchmark.md](docs/benchmark.md) for the exact settings and caveats.
+
+## Repository Layout
+
+```text
+.
+├── data/
+│   └── UltraFusion-Extreme-Cases/    # 7 real-shot stress cases
+├── docs/
+│   ├── benchmark.md                  # benchmark notes and preview baseline
+│   └── method.md                     # reproduction observations
+├── scripts/
+│   ├── diagnose_alignment.py         # RAFT/mask diagnosis
+│   ├── multi_exposure_fuse.py        # multi-exposure pair planner
+│   ├── build_report.py               # HTML gallery builder
+│   └── make_contact_sheet.py         # README contact sheet builder
+├── ultrafusion_extreme/
+│   ├── alignment.py
+│   └── exposure.py
+├── inference.py
+├── train.py
+└── val_nriqa.py
+```
+
+Most model code is inherited from the upstream UltraFusion repository.
+
+## Installation
+
+Use the same environment style as the official project:
+
+```shell
 conda create -n UltraFusion python=3.10
 conda activate UltraFusion
 pip install -r requirements.txt
 ```
-**Prepare Test Data and Pre-trained Model**
 
-Download [raft-sintel.pth](https://drive.google.com/drive/folders/1sWDsfuZ3Up38EUQt7-JDTT1HcGHuJgvT?usp=sharing), [v2-1_512-ema-pruned.ckpt](https://drive.google.com/file/d/1IFFqrIoRVVtSE9UxWDeMB2rfOa2ox-4h/view?usp=drive_link), [fcb.pt](https://huggingface.co/zxchen00/UltraFusion/blob/main/fcb.pt) and [ultrafusion.pt](https://huggingface.co/zxchen00/UltraFusion/blob/main/ultrafusion.pt), and put them in ```ckpts``` folder. Download three benchmarks ([Google Drive](https://drive.google.com/drive/folders/18icr4A_0qGvwqehPhxH29hqJYO8HS6bi?usp=sharing) or [Baidu Disk]()) and put them in ```data``` folder.
+Prepare pretrained weights in `ckpts/`:
 
-**Inference**
+- `raft-sintel.pth`
+- `v2-1_512-ema-pruned.ckpt`
+- `fcb.pt`
+- `ultrafusion.pt`
 
-Run the following scripts for inference.
+Please download these from the official UltraFusion instructions or the linked upstream resources. Large checkpoints are not included in this repository.
+
+## Run Inference
+
+Run the original benchmark-style inference:
+
 ```shell
-# UltraFusion Benchmark
 python inference.py --dataset UltraFusion --output results --tiled --tile_size 512 --tile_stride 256 --prealign --save_all
-# RealHDRV
-python inference.py --dataset RealHDRV --output results --tiled --tile_size 512 --tile_stride 256 --prealign --save_all
-# MEFB (cancel pre-alignment for static scenes)
-python inference.py --dataset MEFB --output results --tiled --tile_size 512 --tile_stride 256 --save_all
 ```
-You can also use ```val_nriqa.py``` for evaluation.
 
-## Training
+Run the real-shot extreme cases:
 
-**Prepare Training Data**
-
-Download [SICE dataset](https://drive.google.com/file/d/1AfRZ3ymcMwUO644cCWQEo36_ypWINxlT/view?usp=sharing) and our [generated occlusion masks](https://drive.google.com/file/d/1sUtmCY-SLFYvpmnQQy150HjyOka3ymoW/view?usp=sharing), and put them in ```data``` folder. 
-
-**Start Training**
-
-Run the following scripts for training.
+```shell
+python inference.py --dataset UltraFusionExtreme --output results --tiled --tile_size 512 --tile_stride 256 --strategy auto --save_all
 ```
-accelerate launch train.py --config configs/ultrafusion.yaml
+
+For limited GPU memory, use the preview setting:
+
+```shell
+python inference.py --dataset UltraFusionExtreme --output results_baseline_preview --tiled --tile_size 512 --tile_stride 256 --strategy auto --steps 10 --max_long_edge 512 --save_all
 ```
-The checkpoints will be saved in ```exps/UltraFusion``` folder.
 
+The `--strategy` option controls the pre-alignment branch:
 
+- `align`: use RAFT pre-alignment.
+- `noalign`: skip pre-alignment and use the under-exposed image directly as guidance.
+- `auto`: choose based on occlusion-mask and saturation statistics.
+
+## Diagnose Alignment
+
+To inspect RAFT alignment and occlusion masks without running the full diffusion model:
+
+```shell
+python scripts/diagnose_alignment.py --dataset UltraFusionExtreme --output reports/alignment_diagnosis --max_long_edge 512
+```
+
+This writes per-scene images and a `summary.json` file:
+
+- under-exposed input
+- over-exposed input
+- IMF-adjusted under-exposed image
+- warped under-exposed image
+- occlusion mask
+- flow magnitude visualization
+- recommended alignment strategy
+
+Build an HTML gallery from the diagnosis outputs:
+
+```shell
+python scripts/build_report.py --input reports/alignment_diagnosis --output reports/alignment_diagnosis.html
+```
+
+## Multi-Exposure Planning
+
+UltraFusion is a two-image method, but real HDR capture often provides more than two exposures. This repository includes a small planner for sequential pair experiments:
+
+```shell
+python scripts/multi_exposure_fuse.py --input_dir path/to/exposure_burst --order bright-to-dark --output reports/multi_exposure_plan --write_pair_datasets
+```
+
+Supported order policies:
+
+- `bright-to-dark`
+- `dark-to-bright`
+- `anchor-extremes`
+
+The script ranks images by brightness, builds pair plans, and can materialize pair datasets that are consumable by `inference.py`.
+
+## Current Findings
+
+The current reproduction work focuses on two practical observations:
+
+1. RAFT pre-alignment and forward-backward consistency masks can fail in saturation-heavy scenes, especially when the over-exposed image loses most texture or the motion region is small.
+2. Sequential multi-exposure fusion is order-sensitive. Dark-to-bright fusion may repeatedly regenerate highlight regions and blur details; bright-to-dark fusion can preserve structure better but may produce lower overall brightness.
+
+These findings are documented in [docs/method.md](docs/method.md). They should be treated as reproduction observations and engineering hypotheses, not as a complete new algorithm.
+
+## Data Notes
+
+`UltraFusion-Extreme-Cases` follows this structure:
+
+```text
+data/UltraFusion-Extreme-Cases/
+├── 0001/
+│   ├── ue.png
+│   └── oe.png
+├── ...
+└── metadata.json
+```
+
+`ue.*` is the under-exposed input. `oe.*` is the over-exposed input.
+
+The dataset is small and intended for stress testing, debugging, and project demonstration. It is not a replacement for the official UltraFusion benchmark.
+
+## Roadmap
+
+- Add full-resolution baseline results on a larger GPU.
+- Tune `auto` alignment thresholds against the real-shot cases.
+- Add a soft-mask alignment mode.
+- Add side-by-side `align` / `noalign` / `auto` reports.
+- Add no-reference IQA metrics and ghosting proxy metrics.
+- Expand the real-shot extreme benchmark with more scenes and metadata.
 
 ## Acknowledgements
-This project is developped on the codebase of [DiffBIR](https://github.com/XPixelGroup/DiffBIR). We appreciate their great work! 
 
-## :love_you_gesture: Citation
-If you find our paper and repo are helpful for your research, please consider citing:
+This repository is built on top of the official UltraFusion codebase:
+
+```text
+UltraFusion: Ultra High Dynamic Imaging using Exposure Fusion
+Zixuan Chen, Yujin Wang, Xin Cai, Zhiyuan You, Zheming Lu, Fan Zhang, Shi Guo, Tianfan Xue
+CVPR 2025 Highlight
+```
+
+The original UltraFusion project is developed on the codebase of [DiffBIR](https://github.com/XPixelGroup/DiffBIR).
+
+## Citation
+
+If you use the original UltraFusion model, paper, or codebase, please cite the official paper:
+
 ```BibTeX
 @InProceedings{Chen_2025_CVPR,
     author    = {Chen, Zixuan and Wang, Yujin and Cai, Xin and You, Zhiyuan and Lu, Zheming and Zhang, Fan and Guo, Shi and Xue, Tianfan},
@@ -117,3 +210,4 @@ If you find our paper and repo are helpful for your research, please consider ci
     pages     = {16111-16121}
 }
 ```
+
